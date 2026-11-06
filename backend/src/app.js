@@ -1,34 +1,39 @@
 
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import path from 'node:path';
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
+    import express from 'express';
+    import cors from 'cors';
+    import helmet from 'helmet';
+    import path from 'node:path';
+    import fs from 'node:fs';
+    import { fileURLToPath } from 'node:url';
 
-// Existing API routes
-import authRoutes from './routes/authRoutes.js';
-import voucherRoutes from './routes/voucherRoutes.js';
-import pricingRoutes from './routes/pricingRoutes.js';
-import deviceRoutes from './routes/deviceRoutes.js';
-import computerRoutes from './routes/computerRoutes.js';
+    import authRoutes from './routes/authRoutes.js';
+    import voucherRoutes from './routes/voucherRoutes.js';
+    import pricingRoutes from './routes/pricingRoutes.js';
+    import deviceRoutes from './routes/deviceRoutes.js';
+    import computerRoutes from './routes/computerRoutes.js';
 
-const app = express();
+    const app = express();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
 
-// Security middleware
-app.disable('x-powered-by');
+    // ============================================
+    // SECURITY
+    // ============================================
 
-app.use(
-  helmet({
-    contentSecurityPolicy: false,
-  })
-);
+    app.disable('x-powered-by');
 
-// CORS configuration
-const allowedOrigins = (
+    app.use(
+    helmet({
+        contentSecurityPolicy: false,
+    })
+    );
+
+    // ============================================
+    // CORS
+    // ============================================
+
+    const allowedOrigins = (
   process.env.CORS_ORIGIN || 'http://localhost:5173'
 )
   .split(',')
@@ -38,114 +43,152 @@ const allowedOrigins = (
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      // Requests without an Origin header are allowed.
+      if (!origin) {
         return callback(null, true);
       }
 
-      return callback(new Error('Origin not allowed by CORS'));
+      // Allow configured frontend origins.
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      // Allow requests from the same host as the backend.
+      // Same-origin requests do not need CORS headers.
+      // Other origins remain restricted.
+      return callback(null, false);
     },
   })
 );
+    app.use(express.json({ limit: '20kb' }));
 
-// Parse JSON requests
-app.use(express.json({ limit: '20kb' }));
+    // ============================================
+    // HEALTH CHECK
+    // ============================================
 
-// ============================================
-// API HEALTH CHECK
-// ============================================
+    app.get('/api/health', (_req, res) => {
+    res.json({
+        status: 'ok',
+        service: 'PisoNet Cloud',
+    });
+    });
 
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    service: 'PisoNet Cloud',
-  });
-});
+    // ============================================
+    // API ROUTES
+    // ============================================
 
-// ============================================
-// API ROUTES
-// ============================================
+    app.use('/api/auth', authRoutes);
+    app.use('/api/vouchers', voucherRoutes);
+    app.use('/api/pricing', pricingRoutes);
+    app.use('/api/device', deviceRoutes);
+    app.use('/api/computers', computerRoutes);
 
-app.use('/api/auth', authRoutes);
-app.use('/api/vouchers', voucherRoutes);
-app.use('/api/pricing', pricingRoutes);
-app.use('/api/device', deviceRoutes);
-app.use('/api/computers', computerRoutes);
+    // ============================================
+    // API 404
+    // ============================================
 
-// ============================================
-// API 404 HANDLER
-// ============================================
+    app.use('/api', (_req, res) => {
+    res.status(404).json({
+        error: 'API endpoint not found',
+    });
+    });
 
-app.use('/api', (_req, res) => {
-  res.status(404).json({
-    error: 'API endpoint not found',
-  });
-});
+    // ============================================
+    // REACT FRONTEND
+    // ============================================
 
-// ============================================
-// REACT FRONTEND — PRODUCTION
-// ============================================
-
-if (process.env.NODE_ENV === 'production') {
-  // backend/src -> project root -> admin-web/dist
-  const frontendPath = path.resolve(
+    // Resolve from this file rather than process.cwd()
+    const frontendPath = path.resolve(
     __dirname,
     '../../admin-web/dist'
-  );
-
-  const indexPath = path.join(
-    frontendPath,
-    'index.html'
-  );
-
-  console.log('Frontend directory:', frontendPath);
-
-  if (fs.existsSync(indexPath)) {
-    console.log('React frontend build found.');
-
-    // Serve React JS, CSS, images and other assets
-    app.use(
-      express.static(frontendPath, {
-        index: false,
-      })
     );
 
-    // React Router fallback for page navigation
-    app.get(/.*/, (req, res, next) => {
-      // Do not return HTML for missing asset files
-      if (path.extname(req.path)) {
-        return res.status(404).json({
-          error: 'Static asset not found',
-        });
-      }
+    const indexPath = path.join(
+    frontendPath,
+    'index.html'
+    );
 
-      res.sendFile(indexPath, (err) => {
-        if (err) next(err);
-      });
+    const assetsPath = path.join(
+    frontendPath,
+    'assets'
+    );
+
+    const frontendExists = fs.existsSync(indexPath);
+
+    console.log('====================================');
+    console.log('PisoNet frontend configuration');
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    console.log('Frontend path:', frontendPath);
+    console.log('Index exists:', frontendExists);
+    console.log('Assets exist:', fs.existsSync(assetsPath));
+
+    if (fs.existsSync(assetsPath)) {
+    console.log(
+        'Built assets:',
+        fs.readdirSync(assetsPath)
+    );
+    }
+
+    console.log('====================================');
+
+    if (frontendExists) {
+    // Explicitly serve Vite-generated assets
+    app.use(
+        '/assets',
+        express.static(assetsPath, {
+        fallthrough: false,
+        maxAge: '1h',
+        })
+    );
+
+    // Serve other public files
+    app.use(
+        express.static(frontendPath, {
+        index: false,
+        })
+    );
+
+    // Serve React for application routes
+    app.get(/.*/, (req, res, next) => {
+        if (path.extname(req.path)) {
+        return res.status(404).json({
+            error: 'Static file not found',
+            path: req.path,
+        });
+        }
+
+        res.sendFile(indexPath, (error) => {
+        if (error) next(error);
+        });
     });
-  } else {
+    } else {
     console.error(
-      'React build not found at:',
-      indexPath
+        'WARNING: React frontend build missing.'
     );
 
     app.get(/.*/, (_req, res) => {
-      res.status(503).send(
-        'Admin dashboard build not found.'
-      );
+        res.status(503).json({
+        error: 'React frontend build missing',
+        });
     });
-  }
-}
+    }
 
-// ============================================
-// ERROR HANDLER
-// ============================================
+    // ============================================
+    // ERROR HANDLER
+    // ============================================
 
-app.use((err, _req, res, _next) => {
-  console.error('Server error:', err);
+    app.use((err, req, res, _next) => {
+    console.error('====================================');
+    console.error('Request failed:', req.method, req.originalUrl);
+    console.error('Error:', err.message);
+    console.error('====================================');
 
-  res.status(500).json({
-    error: 'Internal server error',
-  });
-});
+    res.status(err.status || 500).json({
+        error:
+        process.env.NODE_ENV === 'production'
+            ? 'Request failed'
+            : err.message,
+    });
+    });
 
-export default app;
+    export default app;
