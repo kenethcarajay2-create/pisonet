@@ -2,3 +2,16 @@
 /* Discreet administrator entry: five clicks in five seconds. */
 .admin-secret-trigger{position:fixed;right:15px;bottom:13px;width:25px;height:25px;margin:0;padding:0;border:0;border-radius:6px;background:transparent;color:#50627c;font-size:15px;font-weight:400;opacity:.48;z-index:10;line-height:25px;text-align:center;transition:opacity .15s}
 .admin-secret-trigger:hover,.admin-secret-trigger:focus-visible{opacity:.85;background:#1b2a40;outline:1px solid #354a66}
+/* Active-session top-up and minimize controls */
+.timer{justify-content:flex-start;align-items:stretch;padding:18px 18px 12px;gap:8px;overflow:hidden}
+.timer-top{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#9db4d2;letter-spacing:.5px}
+.timer .timer-minimize{width:32px;height:25px;margin:0;padding:0;border-radius:6px;background:#263954;color:#fff}
+.timer strong{text-align:center;font-size:34px;margin:0}
+.topup-form{margin-top:4px}
+.topup-form label{font-size:11px;margin-bottom:6px}
+.topup-row{display:flex;gap:7px}
+.topup-row input{min-width:0;flex:1;font-size:15px;padding:9px;letter-spacing:1px}
+.topup-row button{flex:0 0 100px;width:auto;margin:0;padding:9px;font-size:12px}
+.timer-notice{font-size:11px;color:#7bf0b1;text-align:center}
+.timer-error{font-size:11px;text-align:center;overflow-wrap:anywhere}
+.timer-help{font-size:10px;color:#9db4d2;text-align:center;margin-top:auto}

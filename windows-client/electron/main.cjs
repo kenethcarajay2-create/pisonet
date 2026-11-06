@@ -15,7 +15,7 @@ function isActive(s) { return !!s && ((s.type === 'admin' && s.mode === 'open') 
 async function api(route, method = 'GET', body) {
   if (token.length < 32) throw new Error('Configure PISONET_DEVICE_TOKEN in windows-client/.env');
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), 60000);
   try {
     const response = await fetch(apiUrl + route, {
       method, headers: { 'content-type': 'application/json', 'x-device-token': token },
@@ -24,6 +24,9 @@ async function api(route, method = 'GET', body) {
     const json = await response.json();
     if (!response.ok) throw new Error(json.error || `Server error ${response.status}`);
     return json;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('Server request timed out. Check connection and voucher status before retrying.');
+    throw error;
   } finally { clearTimeout(timeout); }
 }
 function loadPage(win, page) {
@@ -43,8 +46,8 @@ function showTimer() {
   if (gate && !gate.isDestroyed()) { gate.close(); gate = null; }
   if (!timer || timer.isDestroyed()) {
     const area = screen.getPrimaryDisplay().workArea;
-    timer = new BrowserWindow({ width: 270, height: 145, x: area.x + area.width - 285, y: area.y + 10,
-      frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true,
+    timer = new BrowserWindow({ width: 360, height: 315, x: area.x + area.width - 375, y: area.y + 10,
+      frame: false, resizable: false, minimizable: true, alwaysOnTop: true, skipTaskbar: false,
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
     timer.on('closed', () => { timer = null; });
     loadPage(timer, 'timer');
@@ -69,6 +72,7 @@ async function syncWindows() {
   finally { switching = false; }
 }
 app.whenReady().then(async () => {
+  ipcMain.handle('pisonet:minimize', () => { if (timer && !timer.isDestroyed()) timer.minimize(); });
   ipcMain.handle('pisonet:session', async () => ({ session: await getSession() }));
   ipcMain.handle('pisonet:redeem', async (_event, code) => {
     if (typeof code !== 'string' || code.length > 100) throw new Error('Invalid code');

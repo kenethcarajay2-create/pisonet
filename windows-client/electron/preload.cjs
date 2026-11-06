@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('pisonet', {
+  minimize: () => ipcRenderer.invoke('pisonet:minimize'),
   redeem: code => ipcRenderer.invoke('pisonet:redeem', code),
   session: () => ipcRenderer.invoke('pisonet:session'),
   adminStart: details => ipcRenderer.invoke('pisonet:adminStart', details),

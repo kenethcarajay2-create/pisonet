@@ -23,30 +23,63 @@ async function currentSession() {
   return publicPaidSession(paid);
 }
 
+// In-memory throttling is suitable for the current single-instance prototype.
+// For multiple instances, use a shared limiter (Redis or MongoDB).
+const redeemAttempts = new Map();
 router.post('/redeem', async (req, res, next) => {
   const code = String(req.body?.code || '').trim().toUpperCase();
-  if (!/^[A-F0-9]{18}$/.test(code)) return res.status(400).json({ error: 'Invalid voucher code format' });
+  if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code) && !/^[A-F0-9]{18}$/.test(code)) {
+    return res.status(400).json({ error: 'Enter a valid 6-character voucher code' });
+  }
+  const key = computerId;
+  const nowMs = Date.now();
+  const attempts = redeemAttempts.get(key) || { count: 0, until: 0 };
+  if (attempts.until > nowMs) return res.status(429).json({ error: 'Too many attempts. Please wait a few minutes.' });
   const hash = createHash('sha256').update(code).digest('hex');
   const tx = await mongoose.startSession();
   try {
     let result;
+    let addedMinutes;
     await tx.withTransaction(async () => {
       const now = new Date();
       const computer = await Computer.findOne({ computerId }).session(tx);
       if (computer?.adminMode === 'open' || (computer?.adminMode === 'timed' && computer.adminExpiresAt > now)) {
         const e = new Error('Admin access is active'); e.status = 409; throw e;
       }
-      const active = await Session.findOne({ computerId, expiresAt: { $gt: now } }).session(tx);
-      if (active) { const e = new Error('A session is already active'); e.status = 409; throw e; }
-      const voucher = await Voucher.findOneAndUpdate({ codeHash: hash, status: 'unused' }, { $set: { status: 'redeemed', redeemedAt: now, computerId } }, { new: true, session: tx });
+      const voucher = await Voucher.findOneAndUpdate(
+        { codeHash: hash, status: 'unused' },
+        { $set: { status: 'redeemed', redeemedAt: now, computerId } },
+        { new: true, session: tx }
+      );
       if (!voucher) { const e = new Error('Voucher invalid or already used'); e.status = 409; throw e; }
-      const [created] = await Session.create([{ voucherId: voucher._id, computerId, startedAt: now, expiresAt: new Date(now.getTime() + voucher.durationMinutes * 60000) }], { session: tx });
+      addedMinutes = voucher.durationMinutes;
+      const active = await Session.findOne({ computerId, expiresAt: { $gt: now } }).session(tx);
+      if (active) {
+        // Extend the active session, preserving all remaining paid time.
+        result = await Session.findOneAndUpdate(
+          { _id: active._id, expiresAt: active.expiresAt },
+          { $set: { expiresAt: new Date(active.expiresAt.getTime() + addedMinutes * 60000) } },
+          { new: true, session: tx }
+        );
+        if (!result) { const e = new Error('Session changed. Please retry.'); e.status = 409; throw e; }
+      } else {
+        [result] = await Session.create([{
+          voucherId: voucher._id, computerId, startedAt: now,
+          expiresAt: new Date(now.getTime() + addedMinutes * 60000)
+        }], { session: tx });
+      }
       await Computer.updateOne({ computerId }, { $set: { lastSeenAt: now } }, { upsert: true, session: tx });
-      result = created;
     });
-    res.json({ session: publicPaidSession(result) });
-  } catch (e) { if (e.status) return res.status(e.status).json({ error: e.message }); next(e); }
-  finally { await tx.endSession(); }
+    redeemAttempts.delete(key);
+    res.json({ session: publicPaidSession(result), addedMinutes });
+  } catch (e) {
+    if (e.status === 409 && e.message === 'Voucher invalid or already used') {
+      const nextCount = attempts.count + 1;
+      redeemAttempts.set(key, nextCount >= 5 ? { count: 0, until: Date.now() + 5 * 60_000 } : { count: nextCount, until: 0 });
+    }
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  } finally { await tx.endSession(); }
 });
 
 // Simple per-process rate limiting for this one-PC prototype.
