@@ -1,0 +1,2 @@
+@import "tailwindcss";
+@layer components { .field { @apply w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-3 text-white outline-none focus:border-sky-400; } .primary { @apply rounded-xl bg-sky-600 px-4 py-3 font-semibold text-white hover:bg-sky-500 disabled:opacity-50; } .secondary { @apply rounded-lg border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800; } .panel { @apply rounded-2xl border border-slate-800 bg-slate-900 p-5; } }

@@ -1,0 +1,39 @@
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Secrets and environment files
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Build outputs
+dist/
+build/
+out/
+release/
+coverage/
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Electron generated files
+*.exe
+*.msi
+*.blockmap
+
+# Local data
+*.sqlite
+*.db
+*.session
+*.token
+
+# System files
+.DS_Store
+Thumbs.db
