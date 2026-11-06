@@ -1,0 +1,16 @@
+{
+  "name": "pisonet-cloud",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PisoNet Cloud Admin Dashboard and API",
+  "scripts": {
+    "start": "concurrently -k -n BACKEND,FRONTEND \"npm run dev --prefix backend\" \"npm run dev --prefix admin-web\"",
+    "dev": "npm run start",
+    "build": "npm run build --prefix admin-web",
+    "start:production": "npm start --prefix backend",
+    "render-build": "npm ci --include=dev --prefix admin-web && npm run build && npm ci --omit=dev --prefix backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
