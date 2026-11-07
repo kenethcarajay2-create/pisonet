@@ -1,31 +1,53 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import Computer from "../models/Computer.js";
 
-import mongoose from 'mongoose';
+function hashToken(token) {
+  return createHash("sha256").update(token).digest("hex");
+}
 
-const schema = new mongoose.Schema(
-  {
-    computerId: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-      uppercase: true
-    },
-    tokenHash: {
-      type: String,
-      unique: true,
-      sparse: true,
-      select: false
-    },
-    lastSeenAt: Date,
-    adminMode: {
-      type: String,
-      enum: ['open', 'timed', null],
-      default: null
-    },
-    adminStartedAt: Date,
-    adminExpiresAt: Date
-  },
-  { timestamps: true }
-);
+export async function requireDevice(req, res, next) {
+  try {
+    const provided = req.get("x-device-token");
 
-export default mongoose.model('Computer', schema);
+    if (
+      typeof provided !== "string" ||
+      provided.length < 32 ||
+      provided.length > 512
+    ) {
+      return res.status(401).json({
+        error: "Device not authorized",
+      });
+    }
+
+    const providedHash = hashToken(provided);
+
+    // Check individually registered computers.
+    const computer = await Computer.findOne({
+      tokenHash: providedHash,
+    }).select("+tokenHash");
+
+    if (computer) {
+      req.computerId = computer.computerId;
+      return next();
+    }
+
+    // Preserve existing PC-01 configuration.
+    const legacyToken = process.env.DEVICE_TOKEN;
+
+    if (typeof legacyToken === "string" && legacyToken.length >= 32) {
+      const providedBuffer = Buffer.from(providedHash, "hex");
+      const legacyBuffer = Buffer.from(hashToken(legacyToken), "hex");
+
+      if (timingSafeEqual(providedBuffer, legacyBuffer)) {
+        req.computerId = "PC-01";
+        return next();
+      }
+    }
+
+    return res.status(401).json({
+      error: "Device not authorized",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
