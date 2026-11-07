@@ -9,39 +9,52 @@ import Computer from '../models/Computer.js';
 import { requireDevice } from '../middleware/deviceAuth.js';
 
 const router = Router();
+
 router.use(requireDevice);
 
-const computerId = 'PC-01';
+const publicPaidSession = (session, computerId) =>
+  session
+    ? {
+        id: String(session._id),
+        type: 'voucher',
+        computerId,
+        startedAt: session.startedAt,
+        expiresAt: session.expiresAt,
+        serverTime: new Date()
+      }
+    : null;
 
-const publicPaidSession = s => s ? ({
-  id: String(s._id),
-  type: 'voucher',
-  computerId,
-  startedAt: s.startedAt,
-  expiresAt: s.expiresAt,
-  serverTime: new Date()
-}) : null;
+const publicAdminSession = (computer, computerId) =>
+  computer?.adminMode
+    ? {
+        id: String(computer._id),
+        type: 'admin',
+        mode: computer.adminMode,
+        computerId,
+        startedAt: computer.adminStartedAt,
+        expiresAt:
+          computer.adminMode === 'timed'
+            ? computer.adminExpiresAt
+            : null,
+        serverTime: new Date()
+      }
+    : null;
 
-const publicAdminSession = c => c?.adminMode ? ({
-  id: String(c._id),
-  type: 'admin',
-  mode: c.adminMode,
-  computerId,
-  startedAt: c.adminStartedAt,
-  expiresAt: c.adminMode === 'timed' ? c.adminExpiresAt : null,
-  serverTime: new Date()
-}) : null;
-
-async function currentSession() {
+async function currentSession(computerId) {
   const now = new Date();
+
   const computer = await Computer.findOne({ computerId });
 
   if (computer?.adminMode) {
     if (
       computer.adminMode === 'open' ||
-      (computer.adminExpiresAt && computer.adminExpiresAt > now)
+      (
+        computer.adminMode === 'timed' &&
+        computer.adminExpiresAt &&
+        computer.adminExpiresAt > now
+      )
     ) {
-      return publicAdminSession(computer);
+      return publicAdminSession(computer, computerId);
     }
 
     await Computer.updateOne(
@@ -65,14 +78,16 @@ async function currentSession() {
     expiresAt: { $gt: now }
   }).sort({ startedAt: -1 });
 
-  return publicPaidSession(paid);
+  return publicPaidSession(paid, computerId);
 }
 
-// Single-instance prototype rate limiter.
 const redeemAttempts = new Map();
 
 router.post('/redeem', async (req, res, next) => {
-  const code = String(req.body?.code || '').trim().toUpperCase();
+  const computerId = req.computerId;
+  const code = String(req.body?.code || '')
+    .trim()
+    .toUpperCase();
 
   if (
     !/^[A-HJ-NP-Z2-9]{6}$/.test(code) &&
@@ -83,9 +98,8 @@ router.post('/redeem', async (req, res, next) => {
     });
   }
 
-  const key = computerId;
   const nowMs = Date.now();
-  const attempts = redeemAttempts.get(key) || {
+  const attempts = redeemAttempts.get(computerId) || {
     count: 0,
     until: 0
   };
@@ -100,14 +114,17 @@ router.post('/redeem', async (req, res, next) => {
     .update(code)
     .digest('hex');
 
-  const tx = await mongoose.startSession();
+  let tx;
 
   try {
+    tx = await mongoose.startSession();
+
     let result;
     let addedMinutes;
 
     await tx.withTransaction(async () => {
       const now = new Date();
+
       const computer = await Computer.findOne({
         computerId
       }).session(tx);
@@ -125,7 +142,10 @@ router.post('/redeem', async (req, res, next) => {
       }
 
       const voucher = await Voucher.findOneAndUpdate(
-        { codeHash: hash, status: 'unused' },
+        {
+          codeHash: hash,
+          status: 'unused'
+        },
         {
           $set: {
             status: 'redeemed',
@@ -133,11 +153,16 @@ router.post('/redeem', async (req, res, next) => {
             computerId
           }
         },
-        { new: true, session: tx }
+        {
+          new: true,
+          session: tx
+        }
       );
 
       if (!voucher) {
-        const error = new Error('Voucher invalid or already used');
+        const error = new Error(
+          'Voucher invalid or already used'
+        );
         error.status = 409;
         throw error;
       }
@@ -163,7 +188,10 @@ router.post('/redeem', async (req, res, next) => {
               )
             }
           },
-          { new: true, session: tx }
+          {
+            new: true,
+            session: tx
+          }
         );
 
         if (!result) {
@@ -174,27 +202,40 @@ router.post('/redeem', async (req, res, next) => {
           throw error;
         }
       } else {
-        [result] = await Session.create([{
-          voucherId: voucher._id,
-          computerId,
-          startedAt: now,
-          expiresAt: new Date(
-            now.getTime() + addedMinutes * 60000
-          )
-        }], { session: tx });
+        [result] = await Session.create(
+          [{
+            voucherId: voucher._id,
+            computerId,
+            startedAt: now,
+            expiresAt: new Date(
+              now.getTime() + addedMinutes * 60000
+            )
+          }],
+          { session: tx }
+        );
       }
 
       await Computer.updateOne(
         { computerId },
-        { $set: { lastSeenAt: now } },
-        { upsert: true, session: tx }
+        {
+          $set: {
+            lastSeenAt: now
+          },
+          $setOnInsert: {
+            computerId
+          }
+        },
+        {
+          upsert: true,
+          session: tx
+        }
       );
     });
 
-    redeemAttempts.delete(key);
+    redeemAttempts.delete(computerId);
 
     res.json({
-      session: publicPaidSession(result),
+      session: publicPaidSession(result, computerId),
       addedMinutes
     });
   } catch (error) {
@@ -205,10 +246,16 @@ router.post('/redeem', async (req, res, next) => {
       const nextCount = attempts.count + 1;
 
       redeemAttempts.set(
-        key,
+        computerId,
         nextCount >= 5
-          ? { count: 0, until: Date.now() + 5 * 60_000 }
-          : { count: nextCount, until: 0 }
+          ? {
+              count: 0,
+              until: Date.now() + 5 * 60000
+            }
+          : {
+              count: nextCount,
+              until: 0
+            }
       );
     }
 
@@ -220,18 +267,16 @@ router.post('/redeem', async (req, res, next) => {
 
     next(error);
   } finally {
-    await tx.endSession();
+    if (tx) await tx.endSession();
   }
 });
 
-// Shared limiter for admin password verification.
 const failures = new Map();
 
-async function verifyAdminPassword(password) {
+async function verifyAdminPassword(password, computerId) {
   const nowMs = Date.now();
-  const key = computerId;
 
-  const record = failures.get(key) || {
+  const record = failures.get(computerId) || {
     count: 0,
     blockedUntil: 0
   };
@@ -270,25 +315,28 @@ async function verifyAdminPassword(password) {
     record.count += 1;
 
     if (record.count >= 5) {
-      record.blockedUntil = nowMs + 5 * 60_000;
+      record.blockedUntil = nowMs + 5 * 60000;
       record.count = 0;
     }
 
-    failures.set(key, record);
+    failures.set(computerId, record);
 
     const error = new Error('Incorrect admin password');
     error.status = 401;
     throw error;
   }
 
-  failures.delete(key);
+  failures.delete(computerId);
   return true;
 }
 
-// NEW: Password verification without changing paid time.
 router.post('/admin/verify-exit', async (req, res, next) => {
   try {
-    await verifyAdminPassword(req.body?.password);
+    await verifyAdminPassword(
+      req.body?.password,
+      req.computerId
+    );
+
     res.json({ authorized: true });
   } catch (error) {
     if (error.status) {
@@ -302,7 +350,8 @@ router.post('/admin/verify-exit', async (req, res, next) => {
 
 router.post('/admin/start', async (req, res, next) => {
   try {
-    const { password, mode } = req.body;
+    const computerId = req.computerId;
+    const { password, mode } = req.body || {};
     const minutes = Number(req.body?.minutes);
 
     if (!['open', 'timed'].includes(mode)) {
@@ -324,7 +373,7 @@ router.post('/admin/start', async (req, res, next) => {
       });
     }
 
-    await verifyAdminPassword(password);
+    await verifyAdminPassword(password, computerId);
 
     await Computer.updateOne(
       { computerId },
@@ -332,7 +381,7 @@ router.post('/admin/start', async (req, res, next) => {
       { upsert: true }
     );
 
-    const active = await currentSession();
+    const active = await currentSession(computerId);
 
     if (active) {
       return res.status(409).json({
@@ -341,9 +390,11 @@ router.post('/admin/start', async (req, res, next) => {
     }
 
     const now = new Date();
-    const expiresAt = mode === 'timed'
-      ? new Date(now.getTime() + minutes * 60000)
-      : null;
+
+    const expiresAt =
+      mode === 'timed'
+        ? new Date(now.getTime() + minutes * 60000)
+        : null;
 
     const computer = await Computer.findOneAndUpdate(
       {
@@ -361,7 +412,7 @@ router.post('/admin/start', async (req, res, next) => {
           lastSeenAt: now
         }
       },
-      { new: true, upsert: false }
+      { new: true }
     );
 
     if (!computer) {
@@ -371,7 +422,7 @@ router.post('/admin/start', async (req, res, next) => {
     }
 
     res.json({
-      session: publicAdminSession(computer)
+      session: publicAdminSession(computer, computerId)
     });
   } catch (error) {
     if (error.status) {
@@ -383,11 +434,11 @@ router.post('/admin/start', async (req, res, next) => {
   }
 });
 
-router.post('/admin/end', async (_req, res, next) => {
+router.post('/admin/end', async (req, res, next) => {
   try {
     await Computer.updateOne(
       {
-        computerId,
+        computerId: req.computerId,
         adminMode: { $in: ['open', 'timed'] }
       },
       {
@@ -400,28 +451,31 @@ router.post('/admin/end', async (_req, res, next) => {
     );
 
     res.json({
-      session: await currentSession()
+      session: await currentSession(req.computerId)
     });
   } catch (error) {
     next(error);
   }
 });
 
-router.get('/session', async (_req, res, next) => {
+router.get('/session', async (req, res, next) => {
   try {
     res.json({
-      session: await currentSession()
+      session: await currentSession(req.computerId)
     });
   } catch (error) {
     next(error);
   }
 });
 
-router.post('/heartbeat', async (_req, res, next) => {
+router.post('/heartbeat', async (req, res, next) => {
   try {
     await Computer.updateOne(
-      { computerId },
-      { $set: { lastSeenAt: new Date() } },
+      { computerId: req.computerId },
+      {
+        $set: { lastSeenAt: new Date() },
+        $setOnInsert: { computerId: req.computerId }
+      },
       { upsert: true }
     );
 

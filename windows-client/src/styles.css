@@ -15,3 +15,26 @@
 .timer-notice{font-size:11px;color:#7bf0b1;text-align:center}
 .timer-error{font-size:11px;text-align:center;overflow-wrap:anywhere}
 .timer-help{font-size:10px;color:#9db4d2;text-align:center;margin-top:auto}
+
+/* Compact right-edge timer: replaces the large floating panel. */
+html,body,#root{width:100%;height:100%;overflow:hidden}
+.timer-compact,.timer-peek{width:100%;height:100%;background:#111e33;color:#edf6ff;font-family:Inter,Segoe UI,Arial,sans-serif;overflow:hidden}
+.timer-compact{border:1px solid #35506f;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:5px}
+.compact-header{display:flex;align-items:center;justify-content:space-between;font-size:10px;letter-spacing:.7px;color:#a3b6cf;height:20px;flex-shrink:0}
+.timer-compact button{width:auto;margin:0;border-radius:7px;padding:5px 10px;font-size:11px;line-height:1.3}
+.timer-compact .compact-collapse{background:#273e5b;padding:2px 9px;font-size:15px}
+.compact-time{text-align:center;font-size:29px;font-weight:800;letter-spacing:1px;line-height:1.1;color:#76efae;font-variant-numeric:tabular-nums;flex-shrink:0}
+.compact-footer{display:flex;align-items:center;justify-content:center;gap:8px;min-height:27px}
+.compact-footer button{background:#087fb8}
+.compact-feedback{font-size:10px;color:#76efae;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.compact-add-form{display:flex;flex-direction:column;gap:7px;margin-top:4px}
+.compact-add-form label{font-size:9px;margin:0;letter-spacing:.5px}
+.compact-add-form input{height:35px;padding:6px 10px;font-size:15px;letter-spacing:2px}
+.compact-actions{display:flex;gap:8px}
+.compact-actions button{flex:1}
+.compact-actions .compact-secondary{background:#29405c}
+.compact-feedback.error-text{color:#ff9b9b;white-space:normal;line-height:1.1;max-height:25px;overflow:hidden}
+.timer-peek{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1px solid #35506f;border-radius:10px 0 0 10px;cursor:pointer;user-select:none}
+.peek-arrow{color:#8eaccf;font-size:12px;line-height:1}
+.peek-clock{color:#76efae;font-size:19px;line-height:1.2}
+.peek-minutes{color:#76efae;font-size:11px;font-weight:700}

@@ -1,10 +1,31 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
-export function requireDevice(req, res, next) {
-  const expected = process.env.DEVICE_TOKEN;
-  const provided = req.get('x-device-token');
-  if (!expected || expected.length < 32 || !provided) return res.status(401).json({ error: 'Device not authorized' });
-  const a = createHash('sha256').update(provided).digest();
-  const b = createHash('sha256').update(expected).digest();
-  if (!timingSafeEqual(a, b)) return res.status(401).json({ error: 'Device not authorized' });
-  next();
-}
+
+import mongoose from 'mongoose';
+
+const schema = new mongoose.Schema(
+  {
+    computerId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      uppercase: true
+    },
+    tokenHash: {
+      type: String,
+      unique: true,
+      sparse: true,
+      select: false
+    },
+    lastSeenAt: Date,
+    adminMode: {
+      type: String,
+      enum: ['open', 'timed', null],
+      default: null
+    },
+    adminStartedAt: Date,
+    adminExpiresAt: Date
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model('Computer', schema);

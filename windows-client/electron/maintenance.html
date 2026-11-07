@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PisoNet Cloud Maintenance</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #eff6ff;
+      color: #0f172a;
+      font-family: Arial, sans-serif;
+    }
+
+    .panel {
+      width: 100%;
+      padding: 28px;
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      font-size: 22px;
+    }
+
+    p {
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    label {
+      display: block;
+      margin: 20px 0 8px;
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #cancel {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    #exit {
+      background: #dc2626;
+      color: white;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: wait;
+    }
+
+    #message {
+      min-height: 18px;
+      margin-top: 14px;
+      color: #b91c1c;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="panel">
+    <h2>Administrator Maintenance</h2>
+
+    <p>
+      Enter your administrator password to close
+      PisoNet Cloud. This does not cancel paid time.
+    </p>
+
+    <form id="exitForm">
+      <label for="password">
+        Administrator password
+      </label>
+
+      <input id="password" type="password" maxlength="256" autocomplete="off" required autofocus />
+
+      <div class="buttons">
+        <button id="cancel" type="button">
+          Cancel
+        </button>
+
+        <button id="exit" type="submit">
+          Exit PisoNet
+        </button>
+      </div>
+
+      <div id="message" role="alert"></div>
+    </form>
+  </div>
+
+  <script src="./maintenance.js"></script>
+</body>
+
+</html>
